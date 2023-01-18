@@ -1,29 +1,82 @@
 package mr
 
-import "log"
+import (
+	"fmt"
+	"io/ioutil"
+	"log"
+	"time"
+)
 import "net"
 import "os"
 import "net/rpc"
 import "net/http"
 
+type TaskStatus int
 
-type Coordinator struct {
-	// Your definitions here.
+const (
+	Idle TaskStatus = iota
+	InProgress
+	Done
+)
 
+type State int
+
+const (
+	Map State = iota
+	Reduce
+	Wait
+	Exit
+)
+
+type Task struct {
+	Filename   string
+	TaskId     int
+	TaskStatus TaskStatus
+	State      State
+	StartTime  time.Time
+	Result     string
 }
 
-// Your code here -- RPC handlers for the worker to call.
+type Coordinator struct {
+	Files     []string
+	NReduce   int
+	State     State
+	TaskQueue chan *Task
+	TaskMap   map[int]*Task
+}
 
-//
-// an example RPC handler.
-//
-// the RPC argument and reply types are defined in rpc.go.
-//
-func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
-	reply.Y = args.X + 1
+// GetContents
+// Your code here -- RPC handlers for the worker to call.
+// 协调者的RPC handler，由worker向coordinator发送获取任务的请求。
+func (c *Coordinator) AssignTask(args *Args, reply *Task) error {
+	if len(c.TaskQueue) > 0 {
+		reply = <-c.TaskQueue
+	} else if c.State == Exit {
+		reply = &Task{State: Exit}
+	} else {
+		reply = &Task{State: Wait}
+	}
 	return nil
 }
 
+func (c *Coordinator) getFileContent(filename string) string {
+	file, err := os.Open(filename)
+	if err != nil {
+		log.Fatalf("cannot open %v", filename)
+	}
+	content, err := ioutil.ReadAll(file)
+	if err != nil {
+		log.Fatalf("cannot read content of %v", filename)
+	}
+
+	err = file.Close()
+	if err != nil {
+		log.Fatalf("close file failed, filename is %v", filename)
+	}
+
+	c.changeFileStatus(filename)
+	return string(content)
+}
 
 //
 // start a thread that listens for RPCs from worker.go
@@ -33,7 +86,9 @@ func (c *Coordinator) server() {
 	rpc.HandleHTTP()
 	//l, e := net.Listen("tcp", ":1234")
 	sockname := coordinatorSock()
+	fmt.Println("sockname is: ", sockname)
 	os.Remove(sockname)
+	// 基于文件的方式进行rpc调用
 	l, e := net.Listen("unix", sockname)
 	if e != nil {
 		log.Fatal("listen error:", e)
@@ -50,21 +105,33 @@ func (c *Coordinator) Done() bool {
 
 	// Your code here.
 
-
 	return ret
 }
 
-//
-// create a Coordinator.
-// main/mrcoordinator.go calls this function.
-// nReduce is the number of reduce tasks to use.
-//
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	c := Coordinator{}
-
-	// Your code here.
-
-
+	c := Coordinator{
+		Files:     files,
+		NReduce:   nReduce,
+		State:     Map,
+		TaskQueue: make(chan *Task),
+		TaskMap:   make(map[int]*Task),
+	}
+	c.initMapTask()
+	// 启动线程，监听worker的rpc请求
 	c.server()
 	return &c
+}
+
+func (c *Coordinator) initMapTask() {
+	for idx, filename := range c.Files {
+		task := Task{
+			Filename:   filename,
+			TaskId:     idx,
+			TaskStatus: Idle,
+			State:      Map,
+			StartTime:  time.Now(),
+		}
+		c.TaskQueue <- &task
+		c.TaskMap[idx] = &task
+	}
 }

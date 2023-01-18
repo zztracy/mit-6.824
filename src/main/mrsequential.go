@@ -14,20 +14,21 @@ import "log"
 import "io/ioutil"
 import "sort"
 
-// for sorting by key.
+// ByKey for sorting by key.
 type ByKey []mr.KeyValue
 
-// for sorting by key.
+// Len for sorting by key.
 func (a ByKey) Len() int           { return len(a) }
 func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 func main() {
+	// go run -race mrsequential.go wc.so pg-dorian_gray.txt
 	if len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "Usage: mrsequential xxx.so inputfiles...\n")
 		os.Exit(1)
 	}
-
+	// Args[1] 是 wc.so，从wc.so文件中获取方法Map以及Reduce
 	mapf, reducef := loadPlugin(os.Args[1])
 
 	//
@@ -35,7 +36,9 @@ func main() {
 	// pass it to Map,
 	// accumulate the intermediate Map output.
 	//
+	// 初始化一个结构体KeyValue实例，并且赋值给变量intermediate
 	intermediate := []mr.KeyValue{}
+	// Arg[2:] pg-dorian_gray.txt, pg-*.txt
 	for _, filename := range os.Args[2:] {
 		file, err := os.Open(filename)
 		if err != nil {
