@@ -16,7 +16,7 @@ import "strconv"
 // and reply for an RPC.
 //
 
-type ExampleArgs struct {
+type PlaceHolder struct {
 	X int
 }
 

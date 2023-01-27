@@ -85,7 +85,6 @@ func main() {
 
 		i = j
 	}
-
 	ofile.Close()
 }
 
